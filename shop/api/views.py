@@ -2,6 +2,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
+from django.db.models import Sum, F
 from django.http import JsonResponse
 from django.shortcuts import render
 from rest_framework.exceptions import NotFound
@@ -11,9 +12,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 
-from api.models import Shop, Category, Contact
+from api.models import Shop, Category, Contact, Product, ProductInfo, Order
 from api.permissions import IsOwnerOrReadOnly
-from api.serializers import RegistrateSerializer, ShopSerializer, CategorySerializer, ContactSerializer
+from api.serializers import RegistrateSerializer, ShopSerializer, CategorySerializer, ContactSerializer, \
+    ProductSerializer, ProductInfoSerializer, OrderSerializer
 from api.utils import generate_unique_username
 from shop.settings import EMAIL_HOST_USER
 
@@ -23,7 +25,6 @@ class RegistrateView(CreateAPIView):
     serializer_class = RegistrateSerializer
 
     def perform_create(self, serializer):
-        print(serializer)
         user = serializer.save()
         token = default_token_generator.make_token(user)
         token_record = Token.objects.create(user=user, key=token)
@@ -54,47 +55,6 @@ class LoginAccountView(APIView):
         return JsonResponse({'Status': 'False', 'Error': 'Не указаны аргументы'})
 
 
-# class ShopView(APIView):
-    # permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
-    #
-    # def post(self, request):
-    #     serializer = ShopSerializer(data=request.data)
-    #     if serializer.is_valid():
-    #         serializer.save()
-    #         return Response({'Shop created': 'OK'}, status=201)
-    #     else:
-    #         return Response(serializer.errors, status=400)
-    #
-    # def get(self, request):
-    #     shop = Shop.objects.all()
-    #     serializer = ShopSerializer(shop, many=True)
-    #     return JsonResponse(serializer.data)
-    #
-    # def patch(self, request, pk):
-    #     shop = None
-    #     if Shop.objects.get(pk=pk):
-    #         shop = Shop.objects.get(pk=pk)
-    #     else:
-    #         raise NotFound('Shop not found')
-    #
-    #     serializer = ShopSerializer(shop, data=request.data)
-    #     if serializer.is_valid():
-    #         serializer.save()
-    #         return Response({'message': 'Shop updated'}, status=200)
-    #     else:
-    #         return Response({'message': 'Shop not found'}, status=400)
-    #
-    # def delete(self, request, pk):
-    #     shop = None
-    #     if Shop.objects.get(pk=pk):
-    #         shop = Shop.objects.get(pk=pk)
-    #     else:
-    #         raise NotFound('Shop not found')
-    #
-    #     shop.delete()
-    #     return Response({'message': 'Shop deleted'}, status=204)
-
-
 class CategoryView(ListAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -104,50 +64,56 @@ class ShopView(ListAPIView):
     queryset = Shop.objects.all()
     serializer_class = ShopSerializer
 
-
-class ProductView(APIView):
-    def get(self, request):
-        pass
-    def post(self, request):
-        pass
-
-    def patch(self, request):
-        pass
-
-    def delete(self, request):
-        pass
+"""НУЖНЫ ЛИ ТУТ ФИЛЬТРЫ?"""
+class ProductView(ListAPIView):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+    filter_class = ...
 
 
 class ProductInfoView(APIView):
-    def get(self, request):
-        pass
+    def get(self, request, *args, **kwargs):
+        queryset = ProductInfo.objects.filter(shop__state=True)
+        shop_id = request.get('shop_id')
+        product_id = request.get('product_id')
+        if shop_id:
+            queryset = queryset.filter(shop_id=shop_id)
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
 
-    def post(self, request):
-        pass
-
-    def patch(self, request):
-        pass
-
-    def delete(self, request):
-        pass
-
-
-class ParameterView(APIView):
-    def get(self, request):
-        pass
-
-    def post(self, request):
-        pass
-
-    def patch(self, request):
-        pass
-
-    def delete(self, request):
-        pass
+        queryset = queryset.select_related(
+            'shop', 'product__category').prefetch_related(
+            'product_details__parameter').distinct()
+        serializer = ProductInfoSerializer(queryset, many=True)
+        return JsonResponse(serializer.data)
 
 
-class ProductParameterView(APIView):
-    pass
+'''ДОДЕЛАТЬ'''
+class BasketView(APIView):
+
+    def get(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
+        basket = Order.objects.filter(
+            user_id=request.user.id, state='basket').prefetch_related(
+            'orderitem_product__product__products_info').annotate(
+            total_sum=Sum(F('orderitem_order__quantity') * F('orderitem_product__product__products_info__price'))
+        )
+
+        seriralizer = OrderSerializer(basket, many=True)
+        return JsonResponse(seriralizer.data, status=200)
+
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
+
+    def put(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
+
+    def delete(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
 
 
 class ContactView(APIView):
@@ -164,14 +130,12 @@ class ContactView(APIView):
             return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
 
         if {'city', 'street', 'house', 'phone'}.issubset(request.data):
-            user = request.user
             serializer = ContactSerializer(data=request.data)
 
             if serializer.is_valid():
                 serializer.save(user=request.user)
                 return JsonResponse({'success': True}, status=201)
             else:
-                print(serializer.errors)
                 return JsonResponse({'success': False, 'errors': serializer.errors}, status=400)
         else:
             return JsonResponse({'success': False, 'Error': 'missed args'}, status=403)
@@ -179,19 +143,14 @@ class ContactView(APIView):
     def patch(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
-        user = request.user
-        print(request.data)
-        contact_count = Contact.objects.filter(user=user)
+
+        contact_count = Contact.objects.filter(user= request.user)
         for contact in contact_count:
-            print(contact.phone)
-        contact = get_object_or_404(Contact, user=user)
-        print(contact)
-        contact_serializer = ContactSerializer(contact, data=request.data, partial=True)
-        # contact.update(request.data)
-        if contact_serializer.is_valid():
-            contact_serializer.save()
-            return JsonResponse({'Status': 'True'})
-        # return JsonResponse({'Status': 'True'}, status=200)
+            contact = get_object_or_404(Contact, user= request.user)
+            contact_serializer = ContactSerializer(contact, data=request.data, partial=True)
+            if contact_serializer.is_valid():
+                contact_serializer.save()
+                return JsonResponse({'Status': 'True'})
 
     def delete(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
@@ -207,17 +166,6 @@ class ContactView(APIView):
         else:
             return JsonResponse({'Status': 'False', 'Error': 'No contacts found for the current user'}, status=404)
 
-
-
-
-
-
-class OrderView(APIView):
-    pass
-
-
-class OrderItemView(APIView):
-    pass
 
 
 

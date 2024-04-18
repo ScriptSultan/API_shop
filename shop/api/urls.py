@@ -1,4 +1,4 @@
-from api.views import RegistrateView, ShopView, ContactView, CategoryView, LoginAccountView
+from api.views import RegistrateView, ShopView, ContactView, CategoryView, LoginAccountView, ProductInfoView
 from django.urls import path
 
 urlpatterns = [
@@ -7,4 +7,6 @@ urlpatterns = [
     path('user/contact/', ContactView.as_view(), name='contact'),
     path('user/login/', LoginAccountView.as_view(), name='login'),
     path('categories/', CategoryView.as_view(), name='category'),
+    path('user/shop/<int:shop_id>', ProductInfoView.as_view(), name='shop_to_info'),
+    path('user/product/<int:product_id>', ProductInfoView.as_view(), name='product_to_info'),
 ]
