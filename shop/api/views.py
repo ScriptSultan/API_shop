@@ -122,7 +122,9 @@ class BasketView(APIView):
         if not items_data:
             return JsonResponse({'status': False, 'error': 'No item data provided'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            basket = Order.objects.create(user=request.user, status='basket')
+            basket, _ = Order.objects.get_or_create(user=request.user, status='basket')
+        except Order.MultipleObjectsReturned:
+            return JsonResponse({'status': False, "error": 'Basket already exists'})
         except IntegrityError as error:
             return JsonResponse({'status': False, 'error': str(error)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         # print(items_data)
@@ -134,7 +136,7 @@ class BasketView(APIView):
             print(item_data)
             serializer = OrderItemSerializer(data=item_data)
             if serializer.is_valid():
-                serializer.save()
+                serializer.save(order=basket)
                 objects_created += 1
             else:
                 return JsonResponse({'status': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
@@ -145,19 +147,19 @@ class BasketView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
 
-        items_data = request.data.get('items')
-        basket = None
+        items_data = json.loads(request.body).get('items')
         if not items_data:
             return JsonResponse({'status': False, 'error': 'No item data provided'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            basket = Order.objects.get_or_create(user=request.user, status='basket')
+            basket, _ = Order.objects.get_or_create(user=request.user, status='basket')
         except IntegrityError as error:
             return JsonResponse({'status': False, 'error': str(error)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         objects_update = 0
         for item_data in items_data:
-            item_data['order'] = basket.id
+            print(basket)
+            item_data['order_id'] = basket.id
             serializer = OrderItemSerializer(data=item_data)
             if serializer.is_valid():
                 serializer.save()
