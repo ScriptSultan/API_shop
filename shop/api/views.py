@@ -1,10 +1,13 @@
+import json
+
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from django.db.models import Sum, F
+from django.db.models import Sum, F, Q
 from django.http import JsonResponse
 from django.shortcuts import render
+from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import CreateAPIView, ListAPIView, get_object_or_404
 from rest_framework.permissions import IsAuthenticated
@@ -15,10 +18,11 @@ from rest_framework.authtoken.models import Token
 from api.models import Shop, Category, Contact, Product, ProductInfo, Order
 from api.permissions import IsOwnerOrReadOnly
 from api.serializers import RegistrateSerializer, ShopSerializer, CategorySerializer, ContactSerializer, \
-    ProductSerializer, ProductInfoSerializer, OrderSerializer
+    ProductSerializer, ProductInfoSerializer, OrderSerializer, OrderItemSerializer
 from api.utils import generate_unique_username
 from shop.settings import EMAIL_HOST_USER
-
+from ujson import loads as load_json
+from django.db import IntegrityError
 
 class RegistrateView(CreateAPIView):
     queryset = User.objects.all()
@@ -95,26 +99,89 @@ class BasketView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
         basket = Order.objects.filter(
-            user_id=request.user.id, state='basket').prefetch_related(
-            'orderitem_product__product__products_info').annotate(
-            total_sum=Sum(F('orderitem_order__quantity') * F('orderitem_product__product__products_info__price'))
+            user_id=request.user.id, status='basket').prefetch_related(
+            'orderitem_order__product__products_info').annotate(
+            total_sum=Sum(F('orderitem_order__quantity') * F('orderitem_order__product__products_info__price'))
         )
 
         seriralizer = OrderSerializer(basket, many=True)
-        return JsonResponse(seriralizer.data, status=200)
-
+        # print('================================================================')
+        # print(seriralizer.data)
+        return JsonResponse(seriralizer.data, safe=False)
+        # 'TypeError: In order to allow non-dict objects to be serialized set the safe parameter to False.'
     def post(self, request, *args, **kwargs):
+
         if not request.user.is_authenticated:
             return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
+
+        try:
+            items_data = json.loads(request.body).get('items')
+        except json.JSONDecodeError:
+            return JsonResponse({'Status': False, 'Error': 'Invalid JSON format'}, status=400)
+
+        if not items_data:
+            return JsonResponse({'status': False, 'error': 'No item data provided'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            basket = Order.objects.create(user=request.user, status='basket')
+        except IntegrityError as error:
+            return JsonResponse({'status': False, 'error': str(error)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # print(items_data)
+        objects_created = 0
+        for item_data in items_data:
+            print(item_data)
+            print(basket.id)
+            item_data['order'] = basket.id
+            print(item_data)
+            serializer = OrderItemSerializer(data=item_data)
+            if serializer.is_valid():
+                serializer.save()
+                objects_created += 1
+            else:
+                return JsonResponse({'status': False, 'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        print(objects_created)
+        return JsonResponse({'status': True, 'objects_created': objects_created}, status=status.HTTP_201_CREATED)
 
     def put(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
 
+        items_data = request.data.get('items')
+        basket = None
+        if not items_data:
+            return JsonResponse({'status': False, 'error': 'No item data provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            basket = Order.objects.get_or_create(user=request.user, status='basket')
+        except IntegrityError as error:
+            return JsonResponse({'status': False, 'error': str(error)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        objects_update = 0
+        for item_data in items_data:
+            item_data['order'] = basket.id
+            serializer = OrderItemSerializer(data=item_data)
+            if serializer.is_valid():
+                serializer.save()
+                objects_update += 1
+            else:
+                objects_update += 1
+
+        return JsonResponse({'Status': True, 'Создано объектов': objects_update})
+
+
+
     def delete(self, request, *args, **kwargs):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
 
+        items_data = request.data.get('items')
+        basket = None
+        if not items_data:
+            return JsonResponse({'status': False, 'error': 'No item data provided'}, status=status.HTTP_400_BAD_REQUEST)
+        basket = Order.objects.get_or_create(user_id=request.user.id, status='basket')
+        objects_deleted = False
+        query = Q()
+        for item_data in items_data:
+            query = query | Q(order_id=basket.id, id=item_data)
 
 class ContactView(APIView):
     def get(self, request, *args, **kwargs):
@@ -144,9 +211,9 @@ class ContactView(APIView):
         if not request.user.is_authenticated:
             return JsonResponse({'Status': 'False', 'Error': 'Not Log in'}, status=403)
 
-        contact_count = Contact.objects.filter(user= request.user)
+        contact_count = Contact.objects.filter(user=request.user)
         for contact in contact_count:
-            contact = get_object_or_404(Contact, user= request.user)
+            contact = get_object_or_404(Contact, user=request.user)
             contact_serializer = ContactSerializer(contact, data=request.data, partial=True)
             if contact_serializer.is_valid():
                 contact_serializer.save()

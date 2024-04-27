@@ -108,7 +108,7 @@ class Contact(models.Model):
 class Order(models.Model):
     user = models.ForeignKey(User, related_name='orders', on_delete=models.CASCADE)
     dt = models.DateTimeField(auto_now_add=True)
-    status = models.BooleanField(verbose_name="Статус", default=False)
+    status = models.CharField(verbose_name="Статус", max_length=50, blank=True)
     contact = models.ForeignKey(Contact, verbose_name='Контакт', blank=True, null=True, on_delete=models.CASCADE)
 
     def __str__(self):
