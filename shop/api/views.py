@@ -118,10 +118,11 @@ class ConfirmAccount(APIView):
 
             token = ConfirmEmailToken.objects.filter(user__email=request.data['email'],
                                                      key=request.data['token']).first()
+            # print(token.user)
             if token:
                 token.user.is_active = True
                 token.user.save()
-                token.delete()
+                # token.delete()
                 return JsonResponse({'Status': True})
             else:
                 return JsonResponse({'Status': False, 'Errors': 'Неправильно указан токен или email'})
@@ -146,10 +147,10 @@ class LoginAccountView(APIView):
                     JsonResponse: The response indicating the status of the operation and any errors.
                 """
         if {'email', 'password'}.issubset(request.data):
-            # username='DENIS_aaaaa'
+
             user = authenticate(request, username=request.data['email'], password=request.data['password'])
-            user_1 = User.objects.filter(email=request.data['email'])
-            token, _ = Token.objects.get_or_create(user=user_1)
+
+
             if user is not None:
                 if user.is_active:
                     token, _ = Token.objects.get_or_create(user=user)

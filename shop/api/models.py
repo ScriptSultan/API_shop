@@ -86,6 +86,15 @@ class User(AbstractUser):
     groups = models.ManyToManyField(Group, related_name='api_user_groups')
     user_permissions = models.ManyToManyField(Permission, related_name='api_user_permissions')
 
+    @property
+    def token(self):
+        """
+        Позволяет получить токен пользователя путем вызова user.token, вместо
+        user._generate_jwt_token(). Декоратор @property выше делает это
+        возможным. token называется "динамическим свойством".
+        """
+        return self._generate_jwt_token()
+
     def __str__(self):
         return f'{self.first_name} {self.last_name}'
 

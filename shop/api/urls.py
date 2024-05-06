@@ -3,8 +3,8 @@ from api.views import ShopView, ContactView, CategoryView, LoginAccountView, Pro
 from django.urls import path
 
 urlpatterns = [
-    path('users/registrate', RegisterAccount.as_view(), name='registrate'),
-    path('user/register/confirm', ConfirmAccount.as_view(), name='user-register-confirm'),
+    path('users/registrate/', RegisterAccount.as_view(), name='registrate'),
+    path('user/register/confirm/', ConfirmAccount.as_view(), name='user-register-confirm'),
     path('user/shops/', ShopView.as_view(), name='shops'),
     path('user/contact/', ContactView.as_view(), name='contact'),
     path('user/login/', LoginAccountView.as_view(), name='login'),

@@ -27,7 +27,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-
+AUTH_USER_MODEL = 'api.User'
 # Application definition
 
 INSTALLED_APPS = [
@@ -39,9 +39,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'rest_framework',
-    'rest_framework.authtoken'
-
-    'api',
+    # 'django_filters',
+    'rest_framework.authtoken',
+    'django_rest_passwordreset',
+    'api'
 ]
 
 MIDDLEWARE = [
@@ -126,9 +127,21 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+# settings.py
+
+# Настройки для отправки электронной почты
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.mail.ru'  # SMTP-сервер для mail.ru
+EMAIL_PORT = 587  # Порт для SMTP-сервера mail.ru
+EMAIL_USE_TLS = True  # Использовать TLS-шифрование
+EMAIL_HOST_USER =   # Ваш адрес электронной почты mail.ru
+EMAIL_HOST_PASSWORD =  # Пароль от вашего почтового ящика mail.ru
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.TokenAuthentication'
     ]
+    # 'DEFAULT_FILTER_BACKENDS': [
+    #     'django_filters.rest_framework.DjangoFilterBackend'
+    # ]
 }
